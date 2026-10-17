@@ -154,7 +154,7 @@ where
 /// Redact userinfo (`user:pass@`) from a node URL for safe logging. Never
 /// log a value derived from `RedisConfig::connection_url()` (which may
 /// embed credentials) without passing it through this first.
-fn redact_node_for_logging(node: &str) -> String {
+pub(crate) fn redact_node_for_logging(node: &str) -> String {
     if let Some(scheme_end) = node.find("://") {
         let after_scheme = scheme_end + 3;
         // The authority (userinfo@host[:port]) ends at the next `/`, if any.
