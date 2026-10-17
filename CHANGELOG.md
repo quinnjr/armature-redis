@@ -9,6 +9,8 @@ Earlier changes are recorded in the workspace [`CHANGELOG.md`](../CHANGELOG.md).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-17
+
 ### Security
 
 - **Breaking:** `RedisConfig` now has a redacting `Debug` impl (`password` prints as `<redacted>`; `user:pass@` userinfo in `url` and `cluster_nodes` is stripped) and `password` is `#[serde(skip_serializing)]` (it still deserializes). Migration: code that serialized a `RedisConfig` and expected the password back must re-supply it from its secret source.
