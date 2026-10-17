@@ -4,7 +4,12 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 /// Redis configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// `password` is a secret: it is redacted from the [`Debug`] output and
+/// skipped when serializing (it still deserializes normally). Any
+/// `user:pass@` userinfo in `url` and `cluster_nodes` is also redacted from
+/// `Debug`.
+#[derive(Clone, Serialize, Deserialize)]
 pub struct RedisConfig {
     /// Redis URL (redis://host:port or rediss://host:port for TLS).
     pub url: String,
@@ -22,7 +27,8 @@ pub struct RedisConfig {
     pub database: Option<u8>,
     /// Username for Redis 6+ ACL.
     pub username: Option<String>,
-    /// Password.
+    /// Password (secret: redacted from `Debug`, not serialized).
+    #[serde(skip_serializing)]
     pub password: Option<String>,
     /// Cluster mode.
     pub cluster: bool,
@@ -33,6 +39,31 @@ pub struct RedisConfig {
     pub tls: bool,
     /// Connection name (for CLIENT SETNAME).
     pub connection_name: Option<String>,
+}
+
+impl std::fmt::Debug for RedisConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use crate::pool::redact_node_for_logging;
+        let nodes: Vec<String> = self
+            .cluster_nodes
+            .iter()
+            .map(|n| redact_node_for_logging(n))
+            .collect();
+        f.debug_struct("RedisConfig")
+            .field("url", &redact_node_for_logging(&self.url))
+            .field("pool_size", &self.pool_size)
+            .field("min_idle", &self.min_idle)
+            .field("connection_timeout", &self.connection_timeout)
+            .field("command_timeout", &self.command_timeout)
+            .field("database", &self.database)
+            .field("username", &self.username)
+            .field("password", &self.password.as_ref().map(|_| "<redacted>"))
+            .field("cluster", &self.cluster)
+            .field("cluster_nodes", &nodes)
+            .field("tls", &self.tls)
+            .field("connection_name", &self.connection_name)
+            .finish()
+    }
 }
 
 fn default_connection_timeout() -> Duration {
@@ -297,6 +328,23 @@ impl RedisConfigBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn debug_and_serialize_redact_password_and_url_userinfo() {
+        let config = RedisConfig {
+            url: "redis://acl:url-secret@cache:6379".to_string(),
+            password: Some("field-secret".to_string()),
+            cluster_nodes: vec!["redis://:node-secret@n1:7000".to_string()],
+            ..Default::default()
+        };
+        let debug = format!("{config:?}");
+        for secret in ["url-secret", "field-secret", "node-secret"] {
+            assert!(!debug.contains(secret), "{secret} leaked: {debug}");
+        }
+        assert!(debug.contains("redis://cache:6379"));
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(!json.contains("field-secret"), "serialized password leaked");
+    }
 
     #[test]
     fn connection_url_appends_database_when_no_db_segment_present() {
